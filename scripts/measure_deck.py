@@ -153,6 +153,8 @@ def measure(path, layout=None):
     sizes, bold_sizes, title_sizes = collections.Counter(), collections.Counter(), collections.Counter()
     run_colors, fonts = collections.Counter(), collections.Counter()
     runs_total = runs_font = 0
+    ph_fonts = collections.Counter()   # プレースホルダーの中の run。テキストボックスに文字が無い資料でだけ使う
+    ph_total = ph_font = 0
     insets, lst_styles = collections.Counter(), collections.Counter()
     rule_colors, rule_widths = collections.Counter(), collections.Counter()
     panel_fills, small_fills, palette = collections.Counter(), collections.Counter(), collections.Counter()
@@ -186,6 +188,18 @@ def measure(path, layout=None):
             spPr = sp.find(P + "spPr")
             txBody = sp.find(P + "txBody")
             is_box = sp.find(f"{P}nvSpPr/{P}cNvSpPr").get("txBox") == "1"
+            if txBody is not None and is_ph:
+                for r in txBody.iter(A + "r"):
+                    rPr = r.find(A + "rPr")
+                    if not (r.findtext(A + "t") or "").strip():
+                        continue
+                    ph_total += 1
+                    face = [] if rPr is None else [f.get("typeface") for f in (rPr.find(A + "latin"), rPr.find(A + "ea"))
+                                                   if f is not None]
+                    face = [f for f in face if f and not f.startswith("+")]
+                    if face:
+                        ph_font += 1
+                        ph_fonts[face[0]] += 1
             if txBody is not None and not is_ph:
                 for r in txBody.iter(A + "r"):
                     t = r.findtext(A + "t") or ""
@@ -283,6 +297,8 @@ def measure(path, layout=None):
     opts = {"emphasis": options(run_colors), "panel": options(panel_fills), "accent": options(small_fills)}
     rule_color = to_theme(top(rule_colors) or "7F7F7F", tc)
     used = {to_theme(v, tc).split("|")[0] for v in palette} | set(palette)
+    if runs_total == 0:   # 文字がすべてプレースホルダーにある資料（書き出したテンプレートなど）は、そこで書体を測る
+        runs_total, runs_font, fonts = ph_total, ph_font, ph_fonts
 
     return {
         "source": Path(path).name,

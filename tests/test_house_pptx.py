@@ -224,6 +224,33 @@ class HouseDeck(unittest.TestCase):
         with self.assertRaises(SystemExit):
             measure(sample, layout="無いレイアウト")
 
+    def test_fonts_are_read_from_placeholders_when_no_textbox_has_text(self):
+        """文字がすべてプレースホルダーにある資料でも、run に直指定した書体を拾う（テーマ任せと読み違えない）。"""
+        from pptx import Presentation
+        from pptx.oxml.ns import qn
+        from measure_deck import measure
+
+        def sample(face):
+            prs = Presentation()
+            prs.slide_width, prs.slide_height = 12192000, 6858000
+            for n in range(3):
+                s = prs.slides.add_slide(next(l for l in prs.slide_layouts if l.name == "Title and Content"))
+                s.shapes.title.text = f"本文がプレースホルダーだけのページ {n + 1}"
+                s.placeholders[1].text = "本文の行"
+                for ph in s.placeholders:
+                    for r in ph.text_frame.paragraphs[0].runs:
+                        if face:
+                            for tag in ("a:latin", "a:ea"):
+                                r._r.get_or_add_rPr().append(r._r.makeelement(qn(tag), {"typeface": face}))
+            path = self.d / f"placeholders_{face or 'theme'}.pptx"
+            prs.save(str(path))
+            return measure(path)["fonts"]
+
+        fonts = sample("Noto Sans JP")
+        self.assertFalse(fonts["inherit"])
+        self.assertEqual(fonts["explicit"], "Noto Sans JP")
+        self.assertTrue(sample(None)["inherit"])   # 書体を書いていなければ、従来どおりテーマ任せ
+
     def test_line_break_in_shape_is_not_an_orphan(self):
         r = subprocess.run([sys.executable, str(CHECK), str(self.pages), "--brand", "none"], capture_output=True, text=True)
         self.assertNotIn("泣き別れ", r.stdout)   # 矢羽の中の段落内改行を 1 行と数えない
